@@ -7,7 +7,7 @@ This project demonstrates how to use Microsoft Sentinel to detect successful RDP
 
 ---
 
-## Tools & Services=
+## Tools & Services
 - Microsoft Azure (Free Tier)
 - Windows 11 Pro Virtual Machine
 - Microsoft Sentinel (SIEM)
