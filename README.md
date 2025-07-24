@@ -1,6 +1,6 @@
 # Azure Sentinel RDP Detection Lab
 
-This project simulates a basic SOC (Security Operations Center) detection pipeline by configuring Microsoft Sentinel to monitor a Windows 10 Pro virtual machine for RDP login activity.
+This project simulates a basic SOC  detection pipeline by configuring Microsoft Sentinel to monitor a Windows 10 Pro virtual machine for RDP login activity.
 
 ## Tools & Services Used
 
@@ -16,7 +16,7 @@ This project simulates a basic SOC (Security Operations Center) detection pipeli
 ### 1. VM Creation
 
 - Created a new Azure VM using the Windows 10 Pro image.
-- Enabled RDP (Remote Desktop Protocol).
+- Enabled RDP.
 - Left all other settings at default.
 
 ![VM Overview](screenshots/VM_Deployment_Review.png)  
@@ -34,20 +34,18 @@ This project simulates a basic SOC (Security Operations Center) detection pipeli
 
 - Added Windows Security Events via the Data Connectors tab.
 - Installed the required monitoring agent on the VM.
-- Created a Data Collection Rule (DCR) to route logs to the Log Analytics Workspace.
+- Created a Data Collection Rule to route logs to the Log Analytics Workspace.
 
 ![Data Connectors](screenshots/Sentinel_Data_Connectors.png)  
 ![Windows Security Events Installed](screenshots/Windows_Security_Events_Installed.png)
 
 ### 4. Writing Detection Rule
 
-- Created a Scheduled Analytics Rule to detect successful interactive logins (LogonType 10) from accounts other than SYSTEM.
+- Created a Scheduled Analytics Rule to detect successful RDP logins from accounts other than SYSTEM using this custom KQL query:
 
 ```kql
 SecurityEvent
-| where EventID == 4624
-| where Account !contains "SYSTEM"
-| where LogonType == 10
+| where Activity contains "success" and Account !contains "system"
 ```
 
 ![Scheduled Rule](screenshots/Sentinel_Scheduled_Rule.png)
@@ -68,7 +66,7 @@ SecurityEvent
 
 This lab demonstrated how to:
 
-- Set up and configure Microsoft Sentinel with a Log Analytics Workspace
-- Ingest and monitor Windows Security Events from an Azure VM
-- Write a custom KQL rule to detect RDP sign-ins
-- Generate and validate incidents within Microsoft Sentinel
+- Set up and configure Microsoft Sentinel with a Log Analytics Workspace  
+- Ingest and monitor Windows Security Events from an Azure VM  
+- Write a KQL detection rule to catch successful logins  
+- Trigger and view incidents automatically through Sentinel
