@@ -1,72 +1,130 @@
-# Azure Sentinel RDP Detection Lab
+# Microsoft Sentinel RDP Detection Lab
 
-This project simulates a basic SOC  detection pipeline by configuring Microsoft Sentinel to monitor a Windows 10 Pro virtual machine for RDP login activity.
+An evidence-backed detection-engineering lab that sends Windows Security Events from an Azure VM into Microsoft Sentinel, applies KQL analytics logic, and validates that a matching sign-in produces an incident.
 
-## Tools & Services Used
+> **Scope:** Controlled lab environment. This is not a production detection and does not claim production coverage, tuning, or response automation.
 
-- Microsoft Azure (Free Trial)
-- Windows 10 Pro Virtual Machine (Azure)
-- Microsoft Sentinel (SIEM)
-- Log Analytics Workspace
-- Data Connectors (Windows Security Events)
-- Kusto Query Language (KQL)
+## What I built
 
-## Setup Process
+```mermaid
+flowchart LR
+    R[Remote Windows sign-in] --> V[Azure Windows VM]
+    V --> D[Data Collection Rule]
+    D --> L[Log Analytics]
+    L --> S[Sentinel analytics rule]
+    S --> I[Generated incident]
+```
 
-### 1. VM Creation
+| Stage | Evidence |
+| --- | --- |
+| Windows VM deployed | [VM deployment](screenshots/VM_Deployment_Review.png) |
+| RDP network rule enabled | [VM network rules](screenshots/VM_Network_Rules_RDP_Enabled.png) |
+| Log Analytics workspace created | [Workspace](screenshots/Log_Analytics_Workspace_Created.png) |
+| Microsoft Sentinel enabled | [Sentinel workspace](screenshots/Sentinel_Workspace_Added.png) |
+| Windows Security Events connected | [Data connector](screenshots/Sentinel_Data_Connectors.png) and [monitoring extension](screenshots/Windows_Security_Events_Installed.png) |
+| Scheduled analytics rule created | [Analytics rule](screenshots/Sentinel_Scheduled_Rule.png) |
+| Incident generated after a test sign-in | [Triggered incident](screenshots/Sentinel_Incident_Triggered.png) |
 
-- Created a new Azure VM using the Windows 10 Pro image.
-- Enabled RDP.
-- Left all other settings at default.
+## Detection objective
 
-![VM Overview](screenshots/VM_Deployment_Review.png)  
-![RDP Enabled](screenshots/VM_Network_Rules_RDP_Enabled.png)
+Identify successful Remote Desktop logons to the monitored Windows VM while excluding built-in service identities. The Windows event of interest is successful logon event **4624** with **Logon Type 10**, which represents a remote interactive session.
 
-### 2. Deploying Microsoft Sentinel
+## Detection logic
 
-- Created a Log Analytics Workspace.
-- Installed Microsoft Sentinel into the workspace.
+### Version used in the original lab
 
-![Log Analytics Workspace](screenshots/Log_Analytics_Workspace_Created.png)  
-![Sentinel Workspace Added](screenshots/Sentinel_Workspace_Added.png)
-
-### 3. Ingesting Logs
-
-- Added Windows Security Events via the Data Connectors tab.
-- Installed the required monitoring agent on the VM.
-- Created a Data Collection Rule to route logs to the Log Analytics Workspace.
-
-![Data Connectors](screenshots/Sentinel_Data_Connectors.png)  
-![Windows Security Events Installed](screenshots/Windows_Security_Events_Installed.png)
-
-### 4. Writing Detection Rule
-
-- Created a Scheduled Analytics Rule to detect successful RDP logins from accounts other than SYSTEM using this custom KQL query:
+The first scheduled rule used this proof-of-concept query:
 
 ```kql
 SecurityEvent
 | where Activity contains "success" and Account !contains "system"
 ```
 
-![Scheduled Rule](screenshots/Sentinel_Scheduled_Rule.png)
+That query successfully generated the incident shown in the evidence, but it is broader than the stated RDP objective. It can match successful non-RDP activity and relies on a text field instead of the specific event and logon type.
 
-### 5. Triggering the Detection
+### Refined RDP-specific query
 
-- Signed in to the Azure VM using RDP from another machine.
-- The successful login event matched the custom detection rule.
+This is the narrower logic that should be deployed and revalidated in a second lab run:
 
-### 6. Incident Generation
+```kql
+SecurityEvent
+| where EventID == 4624
+| where LogonType == 10
+| where Account !in~ ("SYSTEM", "LOCAL SERVICE", "NETWORK SERVICE")
+| project
+    TimeGenerated,
+    Computer,
+    Account,
+    IpAddress,
+    WorkstationName,
+    LogonType,
+    EventID,
+    Activity
+| order by TimeGenerated desc
+```
 
-- Microsoft Sentinel triggered an incident based on the detection rule.
-- The incident appeared under the "Incidents" tab, containing evidence and metadata for investigation.
+The refined query is documented separately from the original evidence so the repository does not imply that an unvalidated revision produced the existing screenshot.
 
-![Incident Triggered](screenshots/Sentinel_Incident_Triggered.png)
+## Implementation
 
-## Outcome
+1. Deployed a Windows 10 Pro Azure VM.
+2. Enabled Remote Desktop access for the controlled test environment.
+3. Created a Log Analytics workspace and added Microsoft Sentinel.
+4. Connected Windows Security Events and associated the VM through a data collection rule.
+5. Created a scheduled analytics rule using KQL.
+6. Signed in remotely to generate a matching Windows event.
+7. Confirmed that Sentinel created an incident containing the matching evidence.
 
-This lab demonstrated how to:
+## Analyst validation checklist
 
-- Set up and configure Microsoft Sentinel with a Log Analytics Workspace  
-- Ingest and monitor Windows Security Events from an Azure VM  
-- Write a KQL detection rule to catch successful logins  
-- Trigger and view incidents automatically through Sentinel
+For a new alert or incident:
+
+1. Confirm `EventID == 4624` and `LogonType == 10`.
+2. Identify the destination computer and target account.
+3. Review the source IP and workstation name.
+4. Determine whether the account, source, and time are expected.
+5. Check for repeated failed logons before the successful session.
+6. Review nearby process-creation, privilege-assignment, and account-change events.
+7. Escalate when the source, account, timing, or follow-on activity cannot be explained.
+
+## Tuning and false positives
+
+A successful RDP logon is not automatically malicious. Expected administrator activity, help-desk access, jump hosts, maintenance windows, and approved remote-support tools can generate legitimate matches.
+
+Production tuning would require:
+
+- Approved administrator and jump-host allowlists.
+- A defined observation window and alert threshold.
+- Correlation with failed logons and subsequent privileged activity.
+- Asset criticality and identity context.
+- Documented suppression and review procedures.
+
+## MITRE ATT&CK context
+
+The observed behavior is most directly associated with **Remote Services: Remote Desktop Protocol (T1021.001)**. A confirmed compromise using a legitimate account could also involve **Valid Accounts (T1078)**, but a successful logon by itself does not prove either malicious intent or account compromise.
+
+## Limitations
+
+- The original query was not specific enough to prove RDP-only detection.
+- The refined query is documented but still needs a fresh deployment and incident screenshot.
+- The lab used a single endpoint and one controlled validation event.
+- No automated enrichment, containment, or ticketing workflow was implemented.
+- No measured false-positive rate or long-term baseline exists.
+- The screenshots show the original Azure account interface and should be sanitized before reuse in public presentations.
+
+## Skills demonstrated
+
+- Azure VM and Log Analytics configuration
+- Windows Security Event ingestion
+- Microsoft Sentinel analytics rules and incident generation
+- KQL detection logic
+- Evidence-based validation
+- Detection limitations, tuning, and analyst triage documentation
+
+## Next validation run
+
+1. Deploy the refined query.
+2. Generate one expected and one unexpected RDP session.
+3. Capture the matching event fields and resulting Sentinel incident.
+4. Confirm that a normal local interactive logon does not match.
+5. Add a second query correlating failed logons with a later successful RDP session.
